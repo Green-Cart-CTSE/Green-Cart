@@ -1,0 +1,136 @@
+services:
+  authentication:
+    build:
+      context: ./authentication
+    container_name: greencart-authentication
+    restart: unless-stopped
+    environment:
+      PORT: 8081
+      NODE_ENV: production
+      MONGODB_URI: mongodb+srv://username:password@cluster-name.mongodb.net/greencart_auth?retryWrites=true&w=majority
+      JWT_ACCESS_SECRET: replace-with-a-secure-random-secret-key
+      JWT_REFRESH_SECRET: replace-with-another-secure-random-secret-key
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX: 300
+      LOGIN_RATE_LIMIT_WINDOW_MS: 1800000
+      LOGIN_RATE_LIMIT_MAX: 50
+      REGISTER_RATE_LIMIT_MAX: 20
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8081:8081"
+
+  inventory:
+    build:
+      context: ./inventory
+    container_name: greencart-inventory
+    restart: unless-stopped
+    environment:
+      PORT: 8082
+      NODE_ENV: production
+      MONGODB_URI: mongodb+srv://username:password@cluster-name.mongodb.net/greencart_inventory?retryWrites=true&w=majority
+      JWT_ACCESS_SECRET: your_long_random_secret_key_here_for_access_tokens
+      JWT_REFRESH_SECRET: your_long_random_secret_key_here_for_refresh_tokens
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX: 10000
+      CORS_ORIGINS: http://localhost:3000
+      LOW_STOCK_THRESHOLD: 10
+      DEFAULT_PAGE_SIZE: 20
+      MAX_PAGE_SIZE: 100
+    ports:
+      - "8082:8082"
+
+  payment:
+    build:
+      context: ./payment
+    container_name: greencart-payment
+    restart: unless-stopped
+    environment:
+      PORT: 8083
+      NODE_ENV: production
+      MONGODB_URI: mongodb+srv://username:password@cluster-name.mongodb.net/greencart_payment?retryWrites=true&w=majority
+      JWT_ACCESS_SECRET: your-jwt-access-secret-min-16-chars
+      JWT_ACCESS_EXPIRES_IN: 15m
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 10
+      CORS_ORIGINS: http://localhost:3000
+      PAYHERE_MERCHANT_ID: 1230185
+      PAYHERE_SECRET_KEY: your-payhere-secret-key-here
+      PAYHERE_WEBHOOK_SECRET: your-payhere-webhook-secret-here
+      PAYHERE_SECRET_KEY_PRODUCTION: your-payhere-production-secret-key-here
+      PAYHERE_WEBHOOK_SECRET_PRODUCTION: your-payhere-production-webhook-secret-here
+      PAYHERE_API_URL: https://sandbox.payhere.lk
+      PAYMENT_CALLBACK_URL: http://localhost:8083/payment/webhook/payhere
+      PAYMENT_RETURN_URL: http://localhost:3000/checkout/success
+      PAYMENT_CANCEL_URL: http://localhost:3000/checkout/cancel
+      NOTIFICATION_SERVICE_URL: http://notification:5005
+      INVENTORY_SERVICE_URL: http://inventory:8082
+    ports:
+      - "8083:8083"
+
+  notification:
+    build:
+      context: ./notification
+    container_name: greencart-notification
+    restart: unless-stopped
+    environment:
+      PORT: 5005
+      NODE_ENV: production
+      MONGODB_URI: mongodb+srv://username:password@cluster-name.mongodb.net/greencart_notification?retryWrites=true&w=majority
+      JWT_ACCESS_SECRET: your-super-secret-jwt-access-key
+      CORS_ORIGINS: http://localhost:3000
+      SMTP_HOST: localhost
+      SMTP_PORT: 1025
+      SMTP_USER: test@example.com
+      SMTP_PASSWORD: password
+      SMTP_FROM: noreply@greencart.com
+      AUTHENTICATION_SERVICE_URL: http://authentication:8081
+      INVENTORY_SERVICE_URL: http://inventory:8082
+      PAYMENT_SERVICE_URL: http://payment:8083
+    ports:
+      - "8084:5005"
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: greencart-api-gateway
+    restart: unless-stopped
+    depends_on:
+      authentication:
+        condition: service_started
+      inventory:
+        condition: service_started
+      payment:
+        condition: service_started
+      notification:
+        condition: service_started
+    environment:
+      PORT: 8080
+      NODE_ENV: production
+      FRONTEND_ORIGIN: http://localhost:3000
+      AUTH_SERVICE_URL: http://authentication:8081
+      INVENTORY_SERVICE_URL: http://inventory:8082
+      PAYMENT_SERVICE_URL: http://payment:8083
+      NOTIFICATION_SERVICE_URL: http://notification:5005
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+    container_name: greencart-frontend
+    restart: unless-stopped
+    depends_on:
+      api-gateway:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+    ports:
+      - "3000:3000"
+
