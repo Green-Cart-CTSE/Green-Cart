@@ -1,0 +1,26 @@
+name: Authentication CI
+
+on:
+  push:
+    paths:
+      - "authentication/**"
+      - ".github/workflows/authentication-ci.yml"
+      - ".github/workflows/_service-ci-template.yml"
+  pull_request:
+    paths:
+      - "authentication/**"
+      - ".github/workflows/authentication-ci.yml"
+      - ".github/workflows/_service-ci-template.yml"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  service-ci:
+    name: authentication - Service CI
+    uses: ./.github/workflows/_service-ci-template.yml
+    with:
+      service_name: authentication
+      # mongodb-memory-server downloads a binary at install time
+      allow_install_scripts: true

@@ -1,0 +1,99 @@
+name: SonarCloud CI
+
+on:
+  push:
+    paths:
+      - "*/package.json"
+      - "*/package-lock.json"
+      - "*/src/**"
+      - "frontend/**"
+      - "shared/**"
+      - ".github/workflows/sonarcloud-ci.yml"
+  pull_request:
+    paths:
+      - "*/package.json"
+      - "*/package-lock.json"
+      - "*/src/**"
+      - "frontend/**"
+      - "shared/**"
+      - ".github/workflows/sonarcloud-ci.yml"
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  sonarcloud:
+    name: Monorepo SonarCloud Scan
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+      SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check SonarCloud settings
+        id: sonar-settings
+        shell: bash
+        run: |
+          if [ -n "${SONAR_TOKEN}" ] && [ -n "${SONAR_PROJECT_KEY}" ] && [ -n "${SONAR_ORGANIZATION}" ]; then
+            echo "scan_enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scan_enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Discover monorepo scan sources
+        id: discover-sources
+        if: steps.sonar-settings.outputs.scan_enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t service_dirs < <(find . -mindepth 2 -maxdepth 2 -name package.json -not -path '*/node_modules/*' -printf '%h\n' | sed 's|^\./||' | sort -u)
+
+          if [ "${#service_dirs[@]}" -eq 0 ]; then
+            sources='.'
+          else
+            sources=$(IFS=,; echo "${service_dirs[*]}")
+          fi
+
+          echo "sources=$sources" >> "$GITHUB_OUTPUT"
+          echo "Detected Sonar sources: $sources"
+
+      - name: Setup Node.js for JS coverage
+        if: steps.sonar-settings.outputs.scan_enabled == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+
+      - name: Skip coverage reports (no tests)
+        id: coverage
+        run: |
+          echo "lcov_paths=" >> "$GITHUB_OUTPUT"
+          echo "Coverage scanning skipped - no test files"
+
+      - name: SonarCloud Scan
+        if: steps.sonar-settings.outputs.scan_enabled == 'true'
+        uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9
+        with:
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.sources=${{ steps.discover-sources.outputs.sources }}
+            -Dsonar.exclusions=**/node_modules/**,**/coverage/**,**/dist/**,**/build/**,**/api-docs/**,**/*.min.js,**/*.test.ts,**/*.test.tsx
+            -Dsonar.coverage.exclusions=**
+            -Dsonar.qualitygate.wait=false
+            -Dsonar.skipTests=true
+
+      - name: Missing SonarCloud settings fallback
+        if: steps.sonar-settings.outputs.scan_enabled != 'true'
+        run: |
+          echo "SonarCloud scan skipped. Configure these repository settings first:"
+          echo "- Secret: SONAR_TOKEN"
+          echo "- Secret: SONAR_PROJECT_KEY"
+          echo "- Secret: SONAR_ORGANIZATION"

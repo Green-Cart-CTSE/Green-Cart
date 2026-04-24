@@ -1,0 +1,26 @@
+name: Notification CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "notification/**"
+      - ".github/workflows/notification-ci.yml"
+      - ".github/workflows/_service-ci-template.yml"
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "notification/**"
+      - ".github/workflows/notification-ci.yml"
+      - ".github/workflows/_service-ci-template.yml"
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  service-ci:
+    name: notification - Service CI
+    uses: ./.github/workflows/_service-ci-template.yml
+    with:
+      service_name: notification
